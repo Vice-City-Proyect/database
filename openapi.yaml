@@ -1,0 +1,1329 @@
+openapi: 3.1.0
+info:
+  title: API Complejo Deportivo
+  version: 0.1.0
+  summary: Contrato propuesto para el backend del complejo deportivo
+  license:
+    name: No declarada
+    identifier: NOASSERTION
+  description: >-
+    Propuesta de API derivada del esquema PostgreSQL del complejo deportivo.
+    Las rutas no se consideran implementadas hasta que el equipo backend las
+    cree y pruebe. Ver README_SWAGGER.md para reglas y decisiones pendientes.
+servers:
+  - url: http://127.0.0.1:3000/api/v1
+    description: Desarrollo local propuesto
+tags:
+  - name: Autenticación
+    description: Registro e inicio de sesión propuestos.
+  - name: Perfil
+    description: Datos del usuario autenticado.
+  - name: Roles
+    description: Roles sembrados y permisos administrativos.
+  - name: Categorías
+    description: Clasificación del catálogo deportivo.
+  - name: Servicios
+    description: Catálogo, precio y capacidad de los servicios.
+  - name: Horarios
+    description: Horarios recurrentes y vigencia de los servicios.
+  - name: Reservas
+    description: Creación, consulta y cancelación de reservas.
+  - name: Pagos
+    description: Intentos y estados de pago asociados a reservas.
+  - name: Tickets
+    description: Tickets emitidos y validación de acceso.
+  - name: Accesos
+    description: Consulta de la bitácora de escaneos.
+security:
+  - bearerAuth: []
+paths:
+  /auth/register:
+    post:
+      tags: [Autenticación]
+      operationId: registerCustomer
+      summary: Registrar cliente
+      description: >-
+        Crea un usuario con rol customer. El cliente no puede elegir role_id
+        ni enviar password_hash.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              email: cliente@example.com
+              password: CambiarClave123!
+              fullName: Ana Pérez
+              phone: '+573001112233'
+      responses:
+        '201':
+          description: Cuenta creada y sesión iniciada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /auth/login:
+    post:
+      tags: [Autenticación]
+      operationId: login
+      summary: Iniciar sesión
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: cliente@example.com
+              password: CambiarClave123!
+      responses:
+        '200':
+          description: Token y perfil sin credenciales
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /me:
+    get:
+      tags: [Perfil]
+      operationId: getMyProfile
+      summary: Consultar el perfil autenticado
+      responses:
+        '200':
+          description: Perfil del usuario actual; nunca incluye password_hash
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /roles:
+    get:
+      tags: [Roles]
+      operationId: listRoles
+      summary: Listar roles disponibles
+      description: Solo para administración; el cliente no puede asignarse roles.
+      x-required-role: admin
+      responses:
+        '200':
+          description: Roles y permisos definidos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Role'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    patch:
+      tags: [Perfil]
+      operationId: updateMyProfile
+      summary: Actualizar datos de contacto propios
+      description: No permite modificar role_id, is_active ni password_hash.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfilePatch'
+      responses:
+        '200':
+          description: Perfil actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /categories:
+    get:
+      tags: [Categorías]
+      operationId: listCategories
+      summary: Listar categorías activas
+      security: []
+      parameters:
+        - name: active
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Categorías ordenables por sortOrder
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    post:
+      tags: [Categorías]
+      operationId: createCategory
+      summary: Crear categoría
+      x-required-role: admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryInput'
+      responses:
+        '201':
+          description: Categoría creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /categories/{categoryId}:
+    parameters:
+      - $ref: '#/components/parameters/CategoryId'
+    get:
+      tags: [Categorías]
+      operationId: getCategory
+      summary: Consultar categoría
+      security: []
+      responses:
+        '200':
+          description: Categoría
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Categorías]
+      operationId: updateCategory
+      summary: Actualizar categoría
+      x-required-role: admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryPatch'
+      responses:
+        '200':
+          description: Categoría actualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /services:
+    get:
+      tags: [Servicios]
+      operationId: listServices
+      summary: Consultar catálogo de servicios
+      description: Los resultados públicos deben excluir servicios inactivos.
+      security: []
+      parameters:
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Página del catálogo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServicePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    post:
+      tags: [Servicios]
+      operationId: createService
+      summary: Crear servicio
+      x-required-role: admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceInput'
+      responses:
+        '201':
+          description: Servicio creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /services/{serviceId}:
+    parameters:
+      - $ref: '#/components/parameters/ServiceId'
+    get:
+      tags: [Servicios]
+      operationId: getService
+      summary: Consultar detalle de servicio
+      security: []
+      responses:
+        '200':
+          description: Servicio y categoría asociada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Servicios]
+      operationId: updateService
+      summary: Actualizar o desactivar servicio
+      x-required-role: admin
+      description: Usar isActive=false para baja lógica y conservar historial.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServicePatch'
+      responses:
+        '200':
+          description: Servicio actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /services/{serviceId}/schedules:
+    parameters:
+      - $ref: '#/components/parameters/ServiceId'
+    get:
+      tags: [Horarios]
+      operationId: listServiceSchedules
+      summary: Consultar horarios activos del servicio
+      security: []
+      parameters:
+        - name: date
+          in: query
+          description: Fecha local para filtrar vigencia, formato YYYY-MM-DD.
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Horarios semanales del servicio
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceSchedule'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Horarios]
+      operationId: createServiceSchedule
+      summary: Crear horario para servicio
+      x-required-role: admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleInput'
+      responses:
+        '201':
+          description: Horario creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceSchedule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /bookings:
+    get:
+      tags: [Reservas]
+      operationId: listBookings
+      summary: Listar reservas propias
+      description: El rol admin/staff puede consultar reservas del complejo.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/BookingStatus'
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Página de reservas autorizadas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Reservas]
+      operationId: createBooking
+      summary: Solicitar reserva
+      description: >-
+        El servidor obtiene userId del token y calcula totalAmount. Una colisión
+        con otra reserva pending/confirmed debe responder 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingInput'
+            example:
+              serviceId: 8d2a9224-5b7e-4f6c-95f5-194dc7c98eab
+              scheduleId: 89c27c7e-112b-4a2b-a2d9-e2c96b04d7e2
+              startAt: '2026-10-12T14:30:00Z'
+              endAt: '2026-10-12T15:30:00Z'
+              quantity: 1
+              notes: Necesito préstamo de equipo
+      responses:
+        '201':
+          description: Reserva pendiente de confirmación/pago
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /bookings/{bookingId}:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    get:
+      tags: [Reservas]
+      operationId: getBooking
+      summary: Consultar una reserva
+      responses:
+        '200':
+          description: Reserva si pertenece al usuario o el rol lo autoriza
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /bookings/{bookingId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    post:
+      tags: [Reservas]
+      operationId: cancelBooking
+      summary: Cancelar una reserva
+      description: El backend debe validar el estado actual y las reglas de cancelación.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelBookingRequest'
+      responses:
+        '200':
+          description: Reserva cancelada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /bookings/{bookingId}/payments:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    post:
+      tags: [Pagos]
+      operationId: createPaymentAttempt
+      summary: Iniciar pago de reserva
+      description: La integración de pasarela y su idempotencia quedan por definir.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentInput'
+      responses:
+        '201':
+          description: Intento de pago creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /payments/{paymentId}:
+    parameters:
+      - name: paymentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [Pagos]
+      operationId: getPayment
+      summary: Consultar estado del pago
+      description: Nunca devuelve rawResponse ni secretos del proveedor.
+      responses:
+        '200':
+          description: Estado de pago visible para su propietario o admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /bookings/{bookingId}/tickets:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    get:
+      tags: [Tickets]
+      operationId: listBookingTickets
+      summary: Listar tickets de reserva
+      responses:
+        '200':
+          description: Tickets autorizados de la reserva
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Ticket'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /tickets/{code}/validate:
+    post:
+      tags: [Tickets]
+      operationId: validateTicket
+      summary: Validar y registrar escaneo de ticket
+      description: >-
+        Solo staff/admin. El backend debe registrar siempre el resultado en
+        access_logs y evitar que un ticket usado vuelva a conceder acceso.
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketScanInput'
+      responses:
+        '200':
+          description: Resultado del escaneo, concedido o denegado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessValidation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /access-logs:
+    get:
+      tags: [Accesos]
+      operationId: listAccessLogs
+      summary: Consultar bitácora de accesos
+      x-required-role: staff
+      parameters:
+        - name: ticketId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: result
+          in: query
+          schema:
+            $ref: '#/components/schemas/AccessResult'
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Página de eventos de acceso; omite IP y metadata sensibles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessLogPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    CategoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ServiceId:
+      name: serviceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: Solicitud o campos inválidos
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Unauthorized:
+      description: Token ausente, inválido o credenciales no válidas
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Forbidden:
+      description: El rol no tiene permiso para esta operación
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Recurso inexistente o no visible para el usuario
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Conflict:
+      description: Duplicado, solapamiento o transición incompatible
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+  schemas:
+    ApiError:
+      type: object
+      required: [statusCode, code, message]
+      properties:
+        statusCode:
+          type: integer
+          example: 409
+        code:
+          type: string
+          example: BOOKING_TIME_CONFLICT
+        message:
+          type: string
+          example: El horario solicitado ya no está disponible
+        details:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    UserProfile:
+      type: object
+      required: [id, email, fullName, role, isActive, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        fullName:
+          type: string
+        phone:
+          type: [string, 'null']
+        documentId:
+          type: [string, 'null']
+        role:
+          type: string
+          enum: [admin, staff, customer]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password, fullName]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 8
+        fullName:
+          type: string
+          minLength: 1
+        phone:
+          type: string
+        documentId:
+          type: string
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    AuthResponse:
+      type: object
+      required: [accessToken, tokenType, user]
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          enum: [Bearer]
+        expiresIn:
+          type: integer
+          description: Segundos de vigencia; debe fijarse en la implementación.
+        user:
+          $ref: '#/components/schemas/UserProfile'
+    ProfilePatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        fullName:
+          type: string
+          minLength: 1
+        phone:
+          type: [string, 'null']
+        documentId:
+          type: [string, 'null']
+    Role:
+      type: object
+      required: [id, name, permissions]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          enum: [admin, staff, customer]
+        description:
+          type: [string, 'null']
+        permissions:
+          type: object
+          additionalProperties: true
+    Category:
+      type: object
+      required: [id, name, slug, sortOrder, isActive]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: [string, 'null']
+        sortOrder:
+          type: integer
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CategoryInput:
+      type: object
+      additionalProperties: false
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+          minLength: 1
+        description:
+          type: [string, 'null']
+        sortOrder:
+          type: integer
+          default: 0
+        isActive:
+          type: boolean
+          default: true
+    CategoryPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+          minLength: 1
+        description:
+          type: [string, 'null']
+        sortOrder:
+          type: integer
+        isActive:
+          type: boolean
+    Service:
+      type: object
+      required: [id, categoryId, name, slug, price, currency, durationMinutes, capacity, isActive]
+      properties:
+        id:
+          type: string
+          format: uuid
+        categoryId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: [string, 'null']
+        price:
+          $ref: '#/components/schemas/Money'
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: COP
+        durationMinutes:
+          type: integer
+          minimum: 1
+        capacity:
+          type: integer
+          minimum: 1
+        imageUrl:
+          type: [string, 'null']
+          format: uri
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ServiceInput:
+      type: object
+      additionalProperties: false
+      required: [categoryId, name, slug, price]
+      properties:
+        categoryId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+          minLength: 1
+        description:
+          type: [string, 'null']
+        price:
+          $ref: '#/components/schemas/Money'
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          default: COP
+        durationMinutes:
+          type: integer
+          minimum: 1
+          default: 60
+        capacity:
+          type: integer
+          minimum: 1
+          default: 1
+        imageUrl:
+          type: [string, 'null']
+          format: uri
+        isActive:
+          type: boolean
+          default: true
+    ServicePatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        categoryId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+          minLength: 1
+        description:
+          type: [string, 'null']
+        price:
+          $ref: '#/components/schemas/Money'
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        durationMinutes:
+          type: integer
+          minimum: 1
+        capacity:
+          type: integer
+          minimum: 1
+        imageUrl:
+          type: [string, 'null']
+          format: uri
+        isActive:
+          type: boolean
+    ServicePage:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Service'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+    ServiceSchedule:
+      type: object
+      required: [id, serviceId, dayOfWeek, startTime, endTime, isActive]
+      properties:
+        id:
+          type: string
+          format: uuid
+        serviceId:
+          type: string
+          format: uuid
+        dayOfWeek:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: 0 es domingo y 6 es sábado.
+        startTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'
+          example: '09:00:00'
+        endTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'
+          example: '10:00:00'
+        validFrom:
+          type: [string, 'null']
+          format: date
+        validUntil:
+          type: [string, 'null']
+          format: date
+        isActive:
+          type: boolean
+    ScheduleInput:
+      type: object
+      additionalProperties: false
+      required: [dayOfWeek, startTime, endTime]
+      properties:
+        dayOfWeek:
+          type: integer
+          minimum: 0
+          maximum: 6
+        startTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'
+        endTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$'
+        validFrom:
+          type: [string, 'null']
+          format: date
+        validUntil:
+          type: [string, 'null']
+          format: date
+        isActive:
+          type: boolean
+          default: true
+    BookingStatus:
+      type: string
+      enum: [pending, confirmed, cancelled, completed, expired, no_show]
+    BookingInput:
+      type: object
+      additionalProperties: false
+      required: [serviceId, startAt, endAt]
+      properties:
+        serviceId:
+          type: string
+          format: uuid
+        scheduleId:
+          type: [string, 'null']
+          format: uuid
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        quantity:
+          type: integer
+          minimum: 1
+          default: 1
+        notes:
+          type: [string, 'null']
+    Booking:
+      type: object
+      required: [id, serviceId, startAt, endAt, quantity, totalAmount, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        serviceId:
+          type: string
+          format: uuid
+        scheduleId:
+          type: [string, 'null']
+          format: uuid
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        quantity:
+          type: integer
+          minimum: 1
+        totalAmount:
+          $ref: '#/components/schemas/Money'
+        currency:
+          type: string
+          example: COP
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+        notes:
+          type: [string, 'null']
+        cancelledAt:
+          type: [string, 'null']
+          format: date-time
+        cancellationReason:
+          type: [string, 'null']
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    BookingPage:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Booking'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+    CancelBookingRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+    PaymentMethod:
+      type: string
+      enum: [card, pse, cash, transfer, wallet, other]
+    PaymentStatus:
+      type: string
+      enum: [pending, processing, approved, rejected, failed, cancelled, refunded]
+    PaymentInput:
+      type: object
+      additionalProperties: false
+      required: [method]
+      properties:
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+        provider:
+          type: string
+          description: Nombre lógico de pasarela si aplica; nunca una credencial.
+    Payment:
+      type: object
+      required: [id, bookingId, amount, currency, method, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        bookingId:
+          type: string
+          format: uuid
+        amount:
+          $ref: '#/components/schemas/Money'
+        currency:
+          type: string
+          example: COP
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        provider:
+          type: [string, 'null']
+        paidAt:
+          type: [string, 'null']
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    TicketStatus:
+      type: string
+      enum: [valid, used, cancelled, expired]
+    Ticket:
+      type: object
+      required: [id, bookingId, code, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        bookingId:
+          type: string
+          format: uuid
+        code:
+          type: string
+          description: Credencial sensible para validar acceso.
+        holderName:
+          type: [string, 'null']
+        status:
+          $ref: '#/components/schemas/TicketStatus'
+        validFrom:
+          type: [string, 'null']
+          format: date-time
+        validUntil:
+          type: [string, 'null']
+          format: date-time
+        usedAt:
+          type: [string, 'null']
+          format: date-time
+    TicketScanInput:
+      type: object
+      additionalProperties: false
+      properties:
+        accessPoint:
+          type: string
+          maxLength: 255
+    AccessResult:
+      type: string
+      enum: [granted, denied]
+    AccessValidation:
+      type: object
+      required: [result, message, scannedAt]
+      properties:
+        result:
+          $ref: '#/components/schemas/AccessResult'
+        message:
+          type: string
+        ticket:
+          oneOf:
+            - $ref: '#/components/schemas/Ticket'
+            - type: 'null'
+        scannedAt:
+          type: string
+          format: date-time
+    AccessLog:
+      type: object
+      required: [id, ticketId, result, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticketId:
+          type: string
+          format: uuid
+        scannedBy:
+          type: [string, 'null']
+          format: uuid
+        result:
+          $ref: '#/components/schemas/AccessResult'
+        reason:
+          type: [string, 'null']
+        accessPoint:
+          type: [string, 'null']
+        createdAt:
+          type: string
+          format: date-time
+    AccessLogPage:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessLog'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+    Money:
+      type: string
+      pattern: '^\d+\.\d{2}$'
+      example: '125000.00'
